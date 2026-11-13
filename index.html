@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fast Chunked Wi-Fi File Share (1GB+)</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; padding: 20px; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    .card { background: #1e293b; width: 100%; max-width: 460px; padding: 28px; border-radius: 16px; box-shadow: 0 15px 35px rgba(0,0,0,0.4); text-align: center; border: 1px solid #334155; }
+    h2 { margin: 0 0 6px; color: #38bdf8; font-size: 22px; }
+    p.sub { margin: 0 0 20px; color: #94a3b8; font-size: 13px; }
+    .box { background: #0f172a; border: 2px dashed #334155; border-radius: 12px; padding: 16px; margin-bottom: 18px; }
+    .code-label { font-size: 13px; color: #94a3b8; margin-bottom: 6px; font-weight: 600; }
+    .my-code { font-size: 38px; font-weight: 800; letter-spacing: 6px; color: #38bdf8; margin: 4px 0; }
+    .connect-row { display: flex; gap: 10px; margin-bottom: 16px; }
+    input[type="text"] { flex: 1; padding: 12px; font-size: 18px; text-align: center; letter-spacing: 3px; border: 2px solid #334155; background: #0f172a; color: #fff; border-radius: 10px; outline: none; font-weight: bold; }
+    input[type="text"]:focus { border-color: #38bdf8; }
+    button { background: #0284c7; color: white; border: none; padding: 12px 20px; font-size: 16px; font-weight: 600; border-radius: 10px; cursor: pointer; transition: 0.2s; }
+    button:hover { background: #0369a1; }
+    .status { font-size: 13px; font-weight: 600; padding: 10px; border-radius: 8px; margin-bottom: 18px; }
+    .status.wait { background: #451a03; color: #fcd34d; border: 1px solid #78350f; }
+    .status.ok { background: #064e3b; color: #6ee7b7; border: 1px solid #065f46; }
+    .status.err { background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
+    .file-area { display: none; border-top: 1px solid #334155; padding-top: 18px; }
+    .file-btn { display: block; width: 100%; background: #10b981; color: #064e3b; padding: 14px; border-radius: 10px; font-size: 16px; font-weight: 800; cursor: pointer; margin-bottom: 14px; transition: 0.2s; }
+    .file-btn:hover { background: #34d399; }
+    #fileInput { display: none; }
+    
+    .progress-wrap { display: none; background: #0f172a; padding: 12px; border-radius: 10px; margin-bottom: 14px; text-align: left; border: 1px solid #334155; }
+    .progress-info { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; color: #cbd5e1; font-weight: 600; }
+    .progress-bar-bg { width: 100%; height: 10px; background: #334155; border-radius: 6px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; width: 0%; background: #38bdf8; transition: width 0.1s linear; }
+
+    .log { text-align: left; font-size: 12px; color: #cbd5e1; max-height: 150px; overflow-y: auto; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; }
+    .log div { margin-bottom: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 4px; word-break: break-all; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h2>🚀 Turbo LAN File Share</h2>
+  <p class="sub">1GB+ பெரிய வீடியோக்களையும் ஹேங் ஆகாமல் பகிரலாம்</p>
+
+  <div id="status" class="status wait">இணைப்பிற்குத் தயாராகிறது...</div>
+
+  <div class="box">
+    <div class="code-label">உங்கள் 4-இலக்க எண் (Your Code):</div>
+    <div id="myCode" class="my-code">----</div>
+  </div>
+
+  <div id="connectSection">
+    <div class="code-label">மற்றொரு சாதனத்தின் எண்ணை உள்ளிடவும்:</div>
+    <div class="connect-row">
+      <input type="text" id="peerCodeInput" maxlength="4" placeholder="1234" inputmode="numeric">
+      <button id="connectBtn" onclick="connectToPeer()">Connect</button>
+    </div>
+  </div>
+
+  <div id="fileSection" class="file-area">
+    <label for="fileInput" class="file-btn" id="sendLabel">📁 கோப்புகளைத் தேர்ந்தெடுக்கவும் (1GB+ ஆதரவு)</label>
+    <input type="file" id="fileInput" multiple onchange="queueFiles()">
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-info">
+        <span id="progressFileName">கோப்பு அனுப்பப்படுகிறது...</span>
+        <span id="progressPercent">0% (0 MB/s)</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+    </div>
+
+    <div class="log" id="logBox"></div>
+  </div>
+</div>
+
+<script>
+  const PREFIX = "siva-turbo-share-";
+  const CHUNK_SIZE = 64 * 1024; // 64KB per chunk
+  const MAX_BUFFER = 4 * 1024 * 1024; // 4MB buffer limit to prevent browser crash
+  const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
+
+  let peer = null;
+  let conn = null;
+  let fileQueue = [];
+  let isSending = false;
+
+  // Receiver state
+  let incomingMeta = null;
+  let receivedChunks = [];
+  let receivedBytes = 0;
+  let receiveStartTime = 0;
+
+  const statusEl = document.getElementById("status");
+  const myCodeEl = document.getElementById("myCode");
+  const fileSection = document.getElementById("fileSection");
+  const connectSection = document.getElementById("connectSection");
+  const logBox = document.getElementById("logBox");
+  const progressWrap = document.getElementById("progressWrap");
+  const progressFileName = document.getElementById("progressFileName");
+  const progressPercent = document.getElementById("progressPercent");
+  const progressFill = document.getElementById("progressFill");
+
+  function formatSize(bytes) {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  }
+
+  function addLog(msg) {
+    const div = document.createElement("div");
+    div.textContent = msg;
+    logBox.prepend(div);
+  }
+
+  function updateProgress(name, current, total, startTime) {
+    progressWrap.style.display = "block";
+    const pct = Math.min(100, Math.round((current / total) * 100));
+    const elapsed = (Date.now() - startTime) / 1000;
+    const speed = elapsed > 0 ? (current / (1024 * 1024) / elapsed).toFixed(1) : "0.0";
+    
+    progressFileName.textContent = name.length > 22 ? name.substring(0, 20) + "..." : name;
+    progressPercent.textContent = `${pct}% (${speed} MB/s)`;
+    progressFill.style.width = pct + "%";
+
+    if (current >= total) {
+      setTimeout(() => {
+        progressWrap.style.display = "none";
+        progressFill.style.width = "0%";
+      }, 1500);
+    }
+  }
+
+  function initPeer() {
+    peer = new Peer(PREFIX + randomCode);
+
+    peer.on("open", () => {
+      myCodeEl.textContent = randomCode;
+      statusEl.className = "status wait";
+      statusEl.textContent = "தயார்! மற்றொரு சாதனத்தில் இந்த எண்ணை உள்ளிடவும்.";
+    });
+
+    peer.on("connection", (connection) => {
+      conn = connection;
+      setupConnection();
+    });
+
+    peer.on("error", (err) => {
+      statusEl.className = "status err";
+      statusEl.textContent = "இணைப்புப் பிழை: பக்கத்தை Refresh செய்யவும்.";
+      console.error(err);
+    });
+  }
+
+  function connectToPeer() {
+    const targetCode = document.getElementById("peerCodeInput").value.trim();
+    if (targetCode.length !== 4) {
+      alert("சரியான 4 இலக்க எண்ணை உள்ளிடவும்!");
+      return;
+    }
+    statusEl.className = "status wait";
+    statusEl.textContent = "இணைக்கப்படுகிறது...";
+    conn = peer.connect(PREFIX + targetCode, { reliable: true });
+    setupConnection();
+  }
+
+  function setupConnection() {
+    conn.on("open", () => {
+      statusEl.className = "status ok";
+      statusEl.textContent = "✅ இணைக்கப்பட்டது! (Chunking Mode Active)";
+      connectSection.style.display = "none";
+      fileSection.style.display = "block";
+      addLog("சாதனம் இணைக்கப்பட்டது. பெரிய கோப்புகளையும் அனுப்பலாம்.");
+    });
+
+    conn.on("data", (data) => {
+      // 1. File Metadata received
+      if (data && data.type === "meta") {
+        incomingMeta = data;
+        receivedChunks = [];
+        receivedBytes = 0;
+        receiveStartTime = Date.now();
+        addLog(`📥 பெறப்படுகிறது: ${data.name} (${formatSize(data.size)})`);
+        return;
+      }
+
+      // 2. End of file signal received
+      if (data && data.type === "end" && incomingMeta) {
+        const blob = new Blob(receivedChunks, { type: incomingMeta.fileType || "application/octet-stream" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = incomingMeta.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+        addLog(`✅ சேமிக்கப்பட்டது: ${incomingMeta.name}`);
+        incomingMeta = null;
+        receivedChunks = [];
+        receivedBytes = 0;
+        return;
+      }
+
+      // 3. Binary chunk received
+      if (incomingMeta && (data instanceof ArrayBuffer || data instanceof Uint8Array || data.byteLength !== undefined)) {
+        receivedChunks.push(data);
+        receivedBytes += data.byteLength;
+        updateProgress(incomingMeta.name, receivedBytes, incomingMeta.size, receiveStartTime);
+      }
+    });
+
+    conn.on("close", () => {
+      statusEl.className = "status err";
+      statusEl.textContent = "❌ இணைப்பு துண்டிக்கப்பட்டது. Refresh செய்யவும்.";
+      fileSection.style.display = "none";
+      connectSection.style.display = "block";
+    });
+  }
+
+  function queueFiles() {
+    const input = document.getElementById("fileInput");
+    if (!input.files.length) return;
+    for (let i = 0; i < input.files.length; i++) {
+      fileQueue.push(input.files[i]);
+    }
+    input.value = "";
+    if (!isSending) {
+      processQueue();
+    }
+  }
+
+  async function processQueue() {
+    if (fileQueue.length === 0 || !conn || !conn.open) {
+      isSending = false;
+      return;
+    }
+
+    isSending = true;
+    const file = fileQueue.shift();
+    await sendFileInChunks(file);
+    processQueue();
+  }
+
+  function sendFileInChunks(file) {
+    return new Promise((resolve) => {
+      addLog(`⏳ அனுப்பப்படுகிறது: ${file.name} (${formatSize(file.size)})`);
+      
+      // Send metadata first
+      conn.send({
+        type: "meta",
+        name: file.name,
+        size: file.size,
+        fileType: file.type
+      });
+
+      let offset = 0;
+      const startTime = Date.now();
+      const reader = new FileReader();
+
+      const readNextChunk = () => {
+        // Check WebRTC DataChannel buffer to avoid memory overflow
+        const dc = conn.dataChannel;
+        if (dc && dc.bufferedAmount > MAX_BUFFER) {
+          setTimeout(readNextChunk, 20);
+          return;
+        }
+
+        const slice = file.slice(offset, offset + CHUNK_SIZE);
+        reader.readAsArrayBuffer(slice);
+      };
+
+      reader.onload = (e) => {
+        if (!conn || !conn.open) {
+          resolve();
+          return;
+        }
+
+        conn.send(e.target.result);
+        offset += e.target.result.byteLength;
+        updateProgress(file.name, offset, file.size, startTime);
+
+        if (offset < file.size) {
+          readNextChunk();
+        } else {
+          conn.send({ type: "end" });
+          addLog(`📤 அனுப்பி முடிக்கப்பட்டது: ${file.name}`);
+          resolve();
+        }
+      };
+
+      reader.onerror = () => {
+        addLog(`❌ பிழை: ${file.name} படிப்பதில் சிக்கல்.`);
+        resolve();
+      };
+
+      readNextChunk();
+    });
+  }
+
+  initPeer();
+</script>
+
+</body>
+</html>
