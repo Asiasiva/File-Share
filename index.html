@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hyper Share Pro — Live Transfer Stats</title>
+  <title>Hyper Share Pro — OPFS Storage Engine</title>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
@@ -45,7 +45,6 @@
     .hint-text { font-size: 11px; color: #94a3b8; text-align: center; margin-bottom: 14px; }
     #fileInput { display: none; }
 
-    /* Enhanced Live Transfer Stats Box */
     .progress-wrap { display: none; background: #070b14; padding: 14px; border-radius: 12px; margin-bottom: 14px; border: 1px solid #38bdf8; box-shadow: 0 0 15px rgba(56, 189, 248, 0.15); }
     .progress-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
     .progress-title { font-size: 13px; color: #f8fafc; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
@@ -79,11 +78,11 @@
 
 <div class="card" id="dropZone">
   <h2>🚀 Hyper Share Pro</h2>
-  <p class="sub">4x Parallel Lanes • Live Speed & Size Meter • QR Connect</p>
+  <p class="sub">OPFS Storage Streaming • 4x Lanes • Zero RAM Crash</p>
 
   <div class="top-badges">
     <span class="badge" id="wakeBadge">🔆 Screen Wake: Off</span>
-    <span class="badge" id="diskBadge">💾 Disk API: Checking</span>
+    <span class="badge" id="storageBadge">💾 Storage Mode: Checking</span>
   </div>
 
   <div id="status" class="status wait">இணைப்பிற்குத் தயாராகிறது...</div>
@@ -106,10 +105,10 @@
   </div>
 
   <div id="shareSection" class="share-area">
-    <div class="disk-toggle">
+    <div class="disk-toggle" id="pcPickerRow">
       <label>
         <input type="checkbox" id="directDiskCheck">
-        <span>💾 Direct Disk Save (RAM நிரம்பாமல் சேமிக்க)</span>
+        <span>📂 PC Custom Folder-ல் நேரடியாகச் சேமிக்க</span>
       </label>
     </div>
 
@@ -117,7 +116,6 @@
     <div class="hint-text">💡 கோப்புகளை இழுத்துப் போடலாம் அல்லது Screenshot-ஐ <b>Ctrl+V</b> செய்து அனுப்பலாம்</div>
     <input type="file" id="fileInput" multiple onchange="queueFiles(this.files)">
 
-    <!-- Live Transfer Progress & Stats Dashboard -->
     <div class="progress-wrap" id="progressWrap">
       <div class="progress-top">
         <div class="progress-title" id="progressFileName">கோப்பு தயாராகிறது...</div>
@@ -155,10 +153,10 @@
 </div>
 
 <script>
-  const PREFIX = "siva-hyperpro-v4-";
+  const PREFIX = "siva-hyperpro-opfs-";
   const NUM_CHANNELS = 4;
-  const CHUNK_SIZE = 256 * 1024; // 256KB
-  const BUFFER_THRESHOLD = 4 * 1024 * 1024; // 4MB per lane
+  const CHUNK_SIZE = 128 * 1024; // 128KB (Safely under 256KB SCTP limit)
+  const BUFFER_THRESHOLD = 2 * 1024 * 1024;
   const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
 
   let peer = null;
@@ -169,14 +167,20 @@
   let cancelTransferFlag = false;
   let wakeLockSentinel = null;
 
-  // Receiver state
+  // Receiver & Storage State
   let incomingMeta = null;
   let receivedChunksMap = new Map();
   let receivedBytes = 0;
   let receiveStartTime = 0;
   let lastUiUpdate = 0;
-  let diskWritableStream = null;
   let nextWriteOffset = 0;
+  let isFlushing = false;
+
+  // Storage handles (PC Picker or Mobile OPFS)
+  let diskWritableStream = null;
+  let opfsFileHandle = null;
+  let opfsTempName = "";
+  let storageEngineMode = "RAM"; // "OPFS" | "PC_PICKER" | "RAM"
 
   const statusEl = document.getElementById("status");
   const myCodeEl = document.getElementById("myCode");
@@ -191,18 +195,38 @@
   const statSpeed = document.getElementById("statSpeed");
   const statPercent = document.getElementById("statPercent");
   const directDiskCheck = document.getElementById("directDiskCheck");
-  const diskBadge = document.getElementById("diskBadge");
+  const pcPickerRow = document.getElementById("pcPickerRow");
+  const storageBadge = document.getElementById("storageBadge");
   const wakeBadge = document.getElementById("wakeBadge");
   const dropZone = document.getElementById("dropZone");
 
-  const supportsDiskAPI = typeof window.showSaveFilePicker === "function";
-  if (supportsDiskAPI) {
-    diskBadge.textContent = "💾 Disk API: Ready";
-    diskBadge.classList.add("active");
-  } else {
-    diskBadge.textContent = "📱 Mobile Auto-Save";
-    directDiskCheck.disabled = true;
+  const supportsPicker = typeof window.showSaveFilePicker === "function";
+  const supportsOPFS = !!(navigator.storage && typeof navigator.storage.getDirectory === "function");
+
+  if (!supportsPicker) {
+    pcPickerRow.style.display = "none";
   }
+
+  // Clean up any leftover temp files in OPFS on page load
+  async function cleanupOldOPFSFiles() {
+    if (!supportsOPFS) {
+      storageBadge.textContent = "⚠️ RAM Fallback Mode";
+      return;
+    }
+    try {
+      const root = await navigator.storage.getDirectory();
+      for await (const [name] of root.entries()) {
+        if (name.startsWith("hypershare_tmp_")) {
+          await root.removeEntry(name);
+        }
+      }
+      storageBadge.textContent = "💾 Direct Storage (OPFS): ON";
+      storageBadge.classList.add("active");
+    } catch (e) {
+      storageBadge.textContent = "⚠️ RAM Fallback Mode";
+    }
+  }
+  cleanupOldOPFSFiles();
 
   async function requestWakeLock() {
     if ("wakeLock" in navigator) {
@@ -385,6 +409,43 @@
     }
   }
 
+  async function initReceiverStorage(fileName) {
+    diskWritableStream = null;
+    opfsFileHandle = null;
+    opfsTempName = "";
+    storageEngineMode = "RAM";
+
+    // 1. Check PC Custom Folder Picker if enabled
+    if (supportsPicker && directDiskCheck.checked) {
+      try {
+        const handle = await window.showSaveFilePicker({ suggestedName: fileName });
+        diskWritableStream = await handle.createWritable();
+        storageEngineMode = "PC_PICKER";
+        addLog("📂 PC Hard Disk-ல் நேரடியாக எழுதப்படுகிறது...");
+        return;
+      } catch (err) {
+        addLog("⚠️ Folder தேர்வு ரத்து; OPFS Storage-க்கு மாறுகிறது.");
+      }
+    }
+
+    // 2. Initialize Mobile/Browser OPFS Direct Storage (Zero RAM buildup)
+    if (supportsOPFS) {
+      try {
+        const root = await navigator.storage.getDirectory();
+        opfsTempName = `hypershare_tmp_${Date.now()}`;
+        opfsFileHandle = await root.getFileHandle(opfsTempName, { create: true });
+        diskWritableStream = await opfsFileHandle.createWritable();
+        storageEngineMode = "OPFS";
+        addLog("💾 Direct Storage-ல் (OPFS) சேமிக்கப்படுகிறது (RAM-ல் தேங்காது)...");
+        return;
+      } catch (err) {
+        console.warn("OPFS init failed, using RAM fallback:", err);
+      }
+    }
+
+    addLog("⚠️ RAM Mode-ல் கோப்பு பெறப்படுகிறது.");
+  }
+
   function registerChannel(conn) {
     conn.on("open", () => {
       if (!connections.includes(conn)) connections.push(conn);
@@ -392,12 +453,12 @@
 
       if (connections.length >= NUM_CHANNELS) {
         statusEl.className = "status ok";
-        statusEl.textContent = "✅ 4 Parallel Channels இணைக்கப்பட்டன! (Pro Mode)";
+        statusEl.textContent = "✅ 4 Parallel Channels இணைக்கப்பட்டன! (Storage Mode)";
         connectSection.style.display = "none";
         codeBox.style.display = "none";
         shareSection.style.display = "block";
         requestWakeLock();
-        addLog("இணைப்பு தயார். கோப்புகள், Screenshot (Ctrl+V) மற்றும் லிங்க்குகளைப் பகிரலாம்.");
+        addLog("இணைப்பு தயார். பெரிய கோப்புகளையும் Storage-ல் நேரடியாகச் சேமிக்கலாம்.");
       }
     });
 
@@ -420,20 +481,15 @@
             receivedChunksMap.clear();
             receivedBytes = 0;
             nextWriteOffset = 0;
-            diskWritableStream = null;
+            isFlushing = false;
             receiveStartTime = Date.now();
             showTransferUI("📥", msg.name, msg.size);
             addLog(`📥 பெறப்படுகிறது: ${msg.name} (${formatSize(msg.size)})`);
 
-            if (supportsDiskAPI && directDiskCheck.checked) {
-              try {
-                const handle = await window.showSaveFilePicker({ suggestedName: msg.name });
-                diskWritableStream = await handle.createWritable();
-                addLog("💾 நேரடி Disk எழுத்து முறை செயலில் உள்ளது.");
-              } catch (err) {
-                addLog("⚠️ Disk Save ரத்து செய்யப்பட்டது; RAM முறைக்கு மாறுகிறது.");
-                diskWritableStream = null;
-              }
+            await initReceiverStorage(msg.name);
+            // Flush any chunks that arrived while storage was opening
+            if (diskWritableStream) {
+              await flushSequentialChunksToDisk();
             }
             return;
           }
@@ -497,6 +553,12 @@
       try { await diskWritableStream.abort(); } catch (e) {}
       diskWritableStream = null;
     }
+    if (opfsTempName && supportsOPFS) {
+      try {
+        const root = await navigator.storage.getDirectory();
+        await root.removeEntry(opfsTempName);
+      } catch (e) {}
+    }
     incomingMeta = null;
     receivedChunksMap.clear();
     receivedBytes = 0;
@@ -505,38 +567,76 @@
   }
 
   async function flushSequentialChunksToDisk() {
-    while (receivedChunksMap.has(nextWriteOffset)) {
-      const chunk = receivedChunksMap.get(nextWriteOffset);
-      receivedChunksMap.delete(nextWriteOffset);
-      await diskWritableStream.write(chunk);
-      nextWriteOffset += chunk.byteLength;
+    if (isFlushing || !diskWritableStream) return;
+    isFlushing = true;
+    try {
+      while (diskWritableStream && receivedChunksMap.has(nextWriteOffset)) {
+        const chunk = receivedChunksMap.get(nextWriteOffset);
+        receivedChunksMap.delete(nextWriteOffset);
+        await diskWritableStream.write(chunk);
+        nextWriteOffset += chunk.byteLength;
+      }
+    } catch (err) {
+      console.error("Storage write error:", err);
+    } finally {
+      isFlushing = false;
     }
   }
 
   async function finalizeReceivedFile() {
     if (!incomingMeta) return;
-    updateProgress("📥", incomingMeta.name, incomingMeta.size, incomingMeta.size, receiveStartTime, true);
+    const meta = incomingMeta;
+    updateProgress("📥", meta.name, meta.size, meta.size, receiveStartTime, true);
     const elapsed = ((Date.now() - receiveStartTime) / 1000).toFixed(1);
 
-    if (diskWritableStream) {
+    if (storageEngineMode === "PC_PICKER" && diskWritableStream) {
+      while (isFlushing) await new Promise(r => setTimeout(r, 10));
       await flushSequentialChunksToDisk();
       await diskWritableStream.close();
       diskWritableStream = null;
-      addLog(`✅ நேரடியாக Disk-ல் சேமிக்கப்பட்டது: ${incomingMeta.name} (${elapsed} வினாடிகளில்)`);
+      addLog(`✅ நேரடியாக Disk-ல் சேமிக்கப்பட்டது: ${meta.name} (${elapsed} வினாடிகளில்)`);
+    } else if (storageEngineMode === "OPFS" && diskWritableStream && opfsFileHandle) {
+      while (isFlushing) await new Promise(r => setTimeout(r, 10));
+      await flushSequentialChunksToDisk();
+      await diskWritableStream.close();
+      diskWritableStream = null;
+
+      // Read file reference from OPFS Storage (zero RAM copy) and trigger browser download
+      const fileFromStorage = await opfsFileHandle.getFile();
+      const url = URL.createObjectURL(fileFromStorage);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = meta.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      addLog(`✅ Storage வழியாக டவுன்லோட் செய்யப்பட்டது: ${meta.name} (${elapsed} வினாடிகளில்)`);
+
+      // Cleanup OPFS temp file after browser finishes moving it to Downloads
+      const tempToClean = opfsTempName;
+      setTimeout(async () => {
+        URL.revokeObjectURL(url);
+        try {
+          const root = await navigator.storage.getDirectory();
+          await root.removeEntry(tempToClean);
+        } catch (e) {}
+      }, 60000);
     } else {
+      // Pure RAM Fallback
       const sortedOffsets = Array.from(receivedChunksMap.keys()).sort((a, b) => a - b);
       const orderedBlobs = sortedOffsets.map(off => receivedChunksMap.get(off));
-      const blob = new Blob(orderedBlobs, { type: incomingMeta.fileType || "application/octet-stream" });
+      const blob = new Blob(orderedBlobs, { type: meta.fileType || "application/octet-stream" });
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = incomingMeta.name;
+      a.download = meta.name;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10000);
-      addLog(`✅ சேமிக்கப்பட்டது: ${incomingMeta.name} (${elapsed} வினாடிகளில்)`);
+      addLog(`✅ சேமிக்கப்பட்டது: ${meta.name} (${elapsed} வினாடிகளில்)`);
     }
 
     incomingMeta = null;
@@ -620,6 +720,13 @@
       showTransferUI("📤", file.name, file.size);
       addLog(`⏳ 4x வேகத்தில் அனுப்பப்படுகிறது: ${file.name} (${formatSize(file.size)})`);
 
+      const activeConns = connections.filter(c => c && c.open && c.dataChannel && c.dataChannel.readyState === "open");
+      if (activeConns.length === 0) {
+        addLog("❌ இணைப்புத் தயாராக இல்லை. பக்கத்தை Refresh செய்யவும்.");
+        resolve();
+        return;
+      }
+
       controlConn.dataChannel.send(JSON.stringify({
         type: "meta",
         name: file.name,
@@ -642,7 +749,7 @@
           }
 
           while (activeReaders < MAX_CONCURRENT_READS && offset < file.size && !cancelTransferFlag) {
-            const targetConn = connections[laneIndex % connections.length];
+            const targetConn = activeConns[laneIndex % activeConns.length];
             laneIndex++;
 
             if (!targetConn || !targetConn.open) {
@@ -669,35 +776,42 @@
                 return;
               }
 
-              const chunkData = e.target.result;
-              const packet = new ArrayBuffer(8 + chunkData.byteLength);
-              new DataView(packet).setFloat64(0, currentOffset, true);
-              new Uint8Array(packet, 8).set(new Uint8Array(chunkData));
+              try {
+                const chunkData = e.target.result;
+                const packet = new ArrayBuffer(8 + chunkData.byteLength);
+                new DataView(packet).setFloat64(0, currentOffset, true);
+                new Uint8Array(packet, 8).set(new Uint8Array(chunkData));
 
-              dc.send(packet);
-              sentBytes += chunkData.byteLength;
-              updateProgress("📤", file.name, sentBytes, file.size, startTime);
+                dc.send(packet);
+                sentBytes += chunkData.byteLength;
+                updateProgress("📤", file.name, sentBytes, file.size, startTime);
 
-              if (sentBytes >= file.size) {
-                const checkDrain = () => {
-                  if (cancelTransferFlag) {
-                    resolve();
-                    return;
-                  }
-                  const totalBuffered = connections.reduce((sum, c) => sum + (c.dataChannel ? c.dataChannel.bufferedAmount : 0), 0);
-                  if (totalBuffered === 0) {
-                    controlConn.dataChannel.send(JSON.stringify({ type: "end" }));
-                    updateProgress("📤", file.name, file.size, file.size, startTime, true);
-                    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-                    addLog(`📤 அனுப்பப்பட்டது: ${file.name} (${elapsed} வினாடிகளில்)`);
-                    resolve();
-                  } else {
-                    setTimeout(checkDrain, 20);
-                  }
-                };
-                checkDrain();
-              } else {
-                pump();
+                if (sentBytes >= file.size) {
+                  const checkDrain = () => {
+                    if (cancelTransferFlag) {
+                      resolve();
+                      return;
+                    }
+                    const totalBuffered = activeConns.reduce((sum, c) => sum + (c.dataChannel ? c.dataChannel.bufferedAmount : 0), 0);
+                    if (totalBuffered === 0) {
+                      controlConn.dataChannel.send(JSON.stringify({ type: "end" }));
+                      updateProgress("📤", file.name, file.size, file.size, startTime, true);
+                      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                      addLog(`📤 அனுப்பப்பட்டது: ${file.name} (${elapsed} வினாடிகளில்)`);
+                      resolve();
+                    } else {
+                      setTimeout(checkDrain, 20);
+                    }
+                  };
+                  checkDrain();
+                } else {
+                  pump();
+                }
+              } catch (err) {
+                console.error("Send chunk error:", err);
+                addLog("❌ அனுப்புவதில் பிழை: " + err.message);
+                cancelTransferFlag = true;
+                resolve();
               }
             };
             reader.readAsArrayBuffer(slice);
