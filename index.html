@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hyper Share Pro — 4x Lanes & QR</title>
+  <title>Hyper Share Pro — Live Transfer Stats</title>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
@@ -45,20 +45,28 @@
     .hint-text { font-size: 11px; color: #94a3b8; text-align: center; margin-bottom: 14px; }
     #fileInput { display: none; }
 
+    /* Enhanced Live Transfer Stats Box */
+    .progress-wrap { display: none; background: #070b14; padding: 14px; border-radius: 12px; margin-bottom: 14px; border: 1px solid #38bdf8; box-shadow: 0 0 15px rgba(56, 189, 248, 0.15); }
+    .progress-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .progress-title { font-size: 13px; color: #f8fafc; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
+    .cancel-btn { background: #dc2626; color: white; padding: 4px 10px; font-size: 11px; border-radius: 6px; font-weight: 700; flex-shrink: 0; }
+    .cancel-btn:hover { background: #b91c1c; }
+    
+    .progress-bar-bg { width: 100%; height: 12px; background: #1f2937; border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
+    .progress-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #0284c7, #38bdf8, #34d399); transition: width 0.1s linear; }
+    
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: #111827; padding: 8px; border-radius: 8px; text-align: center; }
+    .stat-box { display: flex; flex-direction: column; }
+    .stat-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600; }
+    .stat-val { font-size: 13px; color: #38bdf8; font-weight: 800; margin-top: 2px; }
+    .stat-val.green { color: #34d399; }
+
     .text-box-wrap { background: #070b14; padding: 12px; border-radius: 10px; border: 1px solid #1f2937; margin-bottom: 14px; }
     .text-row { display: flex; gap: 8px; }
     textarea { flex: 1; height: 46px; resize: none; background: #111827; border: 1px solid #374151; color: #f8fafc; border-radius: 8px; padding: 10px; font-size: 13px; outline: none; }
     textarea:focus { border-color: #38bdf8; }
     .send-txt-btn { background: #6366f1; padding: 0 16px; font-size: 14px; }
     .send-txt-btn:hover { background: #4f46e5; }
-
-    .progress-wrap { display: none; background: #070b14; padding: 12px; border-radius: 10px; margin-bottom: 14px; border: 1px solid #1f2937; }
-    .progress-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
-    .progress-info { flex: 1; display: flex; justify-content: space-between; font-size: 12px; color: #cbd5e1; font-weight: 600; }
-    .cancel-btn { background: #dc2626; color: white; padding: 4px 10px; font-size: 11px; border-radius: 6px; font-weight: 700; }
-    .cancel-btn:hover { background: #b91c1c; }
-    .progress-bar-bg { width: 100%; height: 10px; background: #1f2937; border-radius: 6px; overflow: hidden; }
-    .progress-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #0284c7, #38bdf8); transition: width 0.1s linear; }
 
     .log { font-size: 12px; color: #cbd5e1; max-height: 180px; overflow-y: auto; background: #070b14; padding: 10px; border-radius: 8px; border: 1px solid #1f2937; }
     .log-item { margin-bottom: 8px; border-bottom: 1px solid #1f2937; padding-bottom: 6px; word-break: break-word; }
@@ -71,7 +79,7 @@
 
 <div class="card" id="dropZone">
   <h2>🚀 Hyper Share Pro</h2>
-  <p class="sub">4x Parallel Lanes • QR Auto-Connect • Wake Lock • Paste Share</p>
+  <p class="sub">4x Parallel Lanes • Live Speed & Size Meter • QR Connect</p>
 
   <div class="top-badges">
     <span class="badge" id="wakeBadge">🔆 Screen Wake: Off</span>
@@ -106,8 +114,33 @@
     </div>
 
     <label for="fileInput" class="file-btn">⚡ கோப்புகளைத் தேர்ந்தெடுக்கவும் (4x Speed)</label>
-    <div class="hint-text">💡 கோப்புகளை இழுத்துப் போடலாம் (Drag & Drop) அல்லது Screenshot-ஐ <b>Ctrl+V</b> செய்து அனுப்பலாம்</div>
+    <div class="hint-text">💡 கோப்புகளை இழுத்துப் போடலாம் அல்லது Screenshot-ஐ <b>Ctrl+V</b> செய்து அனுப்பலாம்</div>
     <input type="file" id="fileInput" multiple onchange="queueFiles(this.files)">
+
+    <!-- Live Transfer Progress & Stats Dashboard -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-top">
+        <div class="progress-title" id="progressFileName">கோப்பு தயாராகிறது...</div>
+        <button class="cancel-btn" id="cancelBtn" onclick="cancelCurrentTransfer()">✕ Cancel</button>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <span class="stat-label">அளவு (Transferred)</span>
+          <span class="stat-val" id="statBytes">0 MB / 0 MB</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">வேகம் (Speed)</span>
+          <span class="stat-val green" id="statSpeed">0.0 MB/s</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">முடிவு (Progress)</span>
+          <span class="stat-val" id="statPercent">0% (--s)</span>
+        </div>
+      </div>
+    </div>
 
     <div class="text-box-wrap">
       <div class="code-label" style="margin-bottom: 6px;">💬 டெக்ஸ்ட் / லிங்க் அனுப்புக:</div>
@@ -117,25 +150,12 @@
       </div>
     </div>
 
-    <div class="progress-wrap" id="progressWrap">
-      <div class="progress-top">
-        <div class="progress-info">
-          <span id="progressFileName">அனுப்பப்படுகிறது...</span>
-          <span id="progressPercent">0% (0 MB/s)</span>
-        </div>
-        <button class="cancel-btn" id="cancelBtn" onclick="cancelCurrentTransfer()">✕ Cancel</button>
-      </div>
-      <div class="progress-bar-bg">
-        <div class="progress-bar-fill" id="progressFill"></div>
-      </div>
-    </div>
-
     <div class="log" id="logBox"></div>
   </div>
 </div>
 
 <script>
-  const PREFIX = "siva-hyperpro-v3-";
+  const PREFIX = "siva-hyperpro-v4-";
   const NUM_CHANNELS = 4;
   const CHUNK_SIZE = 256 * 1024; // 256KB
   const BUFFER_THRESHOLD = 4 * 1024 * 1024; // 4MB per lane
@@ -166,14 +186,15 @@
   const logBox = document.getElementById("logBox");
   const progressWrap = document.getElementById("progressWrap");
   const progressFileName = document.getElementById("progressFileName");
-  const progressPercent = document.getElementById("progressPercent");
   const progressFill = document.getElementById("progressFill");
+  const statBytes = document.getElementById("statBytes");
+  const statSpeed = document.getElementById("statSpeed");
+  const statPercent = document.getElementById("statPercent");
   const directDiskCheck = document.getElementById("directDiskCheck");
   const diskBadge = document.getElementById("diskBadge");
   const wakeBadge = document.getElementById("wakeBadge");
   const dropZone = document.getElementById("dropZone");
 
-  // 1. Check Direct Disk API Support
   const supportsDiskAPI = typeof window.showSaveFilePicker === "function";
   if (supportsDiskAPI) {
     diskBadge.textContent = "💾 Disk API: Ready";
@@ -183,7 +204,6 @@
     directDiskCheck.disabled = true;
   }
 
-  // 2. Screen Wake Lock API (Keeps screen awake during connection)
   async function requestWakeLock() {
     if ("wakeLock" in navigator) {
       try {
@@ -194,9 +214,7 @@
           wakeBadge.textContent = "🔆 Screen Wake: Off";
           wakeBadge.classList.remove("active");
         });
-      } catch (err) {
-        console.log("WakeLock skipped:", err);
-      }
+      } catch (err) {}
     }
   }
 
@@ -206,7 +224,6 @@
     }
   });
 
-  // 3. Generate QR Code for Auto-Connect
   function renderQRCode(code) {
     const qrContainer = document.getElementById("qrcode");
     qrContainer.innerHTML = "";
@@ -228,6 +245,14 @@
     const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  }
+
+  function formatTime(seconds) {
+    if (!isFinite(seconds) || seconds <= 0) return "0s";
+    if (seconds < 60) return Math.ceil(seconds) + "s";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.ceil(seconds % 60);
+    return `${mins}m ${secs}s`;
   }
 
   function addLog(msg) {
@@ -268,25 +293,41 @@
     logBox.prepend(wrapper);
   }
 
-  function updateProgress(name, current, total, startTime, force = false) {
+  function showTransferUI(directionIcon, fileName, totalSize) {
+    progressWrap.style.display = "block";
+    progressFileName.textContent = `${directionIcon} ${fileName}`;
+    progressFill.style.width = "0%";
+    statBytes.textContent = `0 MB / ${formatSize(totalSize)}`;
+    statSpeed.textContent = "0.0 MB/s";
+    statPercent.textContent = "0% (--s)";
+    lastUiUpdate = 0;
+  }
+
+  function updateProgress(directionIcon, name, current, total, startTime, force = false) {
     const now = Date.now();
-    if (!force && now - lastUiUpdate < 120) return;
+    if (!force && now - lastUiUpdate < 100) return;
     lastUiUpdate = now;
 
     progressWrap.style.display = "block";
+    progressFileName.textContent = `${directionIcon} ${name}`;
+
     const pct = Math.min(100, Math.round((current / total) * 100));
     const elapsed = (now - startTime) / 1000;
-    const speed = elapsed > 0 ? (current / (1024 * 1024) / elapsed).toFixed(1) : "0.0";
-    
-    progressFileName.textContent = name.length > 18 ? name.substring(0, 16) + "..." : name;
-    progressPercent.textContent = `${pct}% (${speed} MB/s)`;
+    const bytesPerSec = elapsed > 0 ? current / elapsed : 0;
+    const speedMB = (bytesPerSec / (1024 * 1024)).toFixed(1);
+    const remainingBytes = Math.max(0, total - current);
+    const etaSeconds = bytesPerSec > 0 ? remainingBytes / bytesPerSec : 0;
+
     progressFill.style.width = pct + "%";
+    statBytes.textContent = `${formatSize(current)} / ${formatSize(total)}`;
+    statSpeed.textContent = `${speedMB} MB/s`;
+    statPercent.textContent = current >= total ? "100% (Done)" : `${pct}% (${formatTime(etaSeconds)})`;
 
     if (current >= total) {
       setTimeout(() => {
         progressWrap.style.display = "none";
         progressFill.style.width = "0%";
-      }, 1500);
+      }, 2500);
     }
   }
 
@@ -295,7 +336,6 @@
     progressFill.style.width = "0%";
   }
 
-  // 4. Initialize Peer & Check URL ?code=XXXX for Auto-Connect
   function initPeer() {
     peer = new Peer(PREFIX + randomCode);
 
@@ -305,12 +345,10 @@
       statusEl.className = "status wait";
       statusEl.textContent = "தயார்! QR ஸ்கேன் செய்யவும் அல்லது எண்ணை உள்ளிடவும்.";
 
-      // Auto-connect if opened via QR scan (?code=1234)
       const urlParams = new URLSearchParams(window.location.search);
       const autoCode = urlParams.get("code");
       if (autoCode && autoCode.length === 4 && autoCode !== randomCode) {
         document.getElementById("peerCodeInput").value = autoCode;
-        // Clean URL without reloading
         window.history.replaceState({}, document.title, window.location.pathname);
         connectToPeer(autoCode);
       }
@@ -384,6 +422,7 @@
             nextWriteOffset = 0;
             diskWritableStream = null;
             receiveStartTime = Date.now();
+            showTransferUI("📥", msg.name, msg.size);
             addLog(`📥 பெறப்படுகிறது: ${msg.name} (${formatSize(msg.size)})`);
 
             if (supportsDiskAPI && directDiskCheck.checked) {
@@ -415,7 +454,7 @@
 
         receivedChunksMap.set(offset, chunkPayload);
         receivedBytes += chunkPayload.byteLength;
-        updateProgress(incomingMeta.name, receivedBytes, incomingMeta.size, receiveStartTime);
+        updateProgress("📥", incomingMeta.name, receivedBytes, incomingMeta.size, receiveStartTime);
 
         if (diskWritableStream) {
           await flushSequentialChunksToDisk();
@@ -434,7 +473,6 @@
     });
   }
 
-  // 5. Cancel Transfer Handler (Sender & Receiver)
   function cancelCurrentTransfer() {
     if (isSending) {
       cancelTransferFlag = true;
@@ -477,7 +515,7 @@
 
   async function finalizeReceivedFile() {
     if (!incomingMeta) return;
-    updateProgress(incomingMeta.name, incomingMeta.size, incomingMeta.size, receiveStartTime, true);
+    updateProgress("📥", incomingMeta.name, incomingMeta.size, incomingMeta.size, receiveStartTime, true);
     const elapsed = ((Date.now() - receiveStartTime) / 1000).toFixed(1);
 
     if (diskWritableStream) {
@@ -527,7 +565,6 @@
     }
   }
 
-  // 6. Ctrl+V Clipboard Image / Screenshot Paste Support
   window.addEventListener("paste", (e) => {
     if (connections.length === 0) return;
     const items = (e.clipboardData || e.originalEvent.clipboardData).items;
@@ -548,7 +585,6 @@
     }
   });
 
-  // 7. Drag & Drop File Support
   dropZone.addEventListener("dragover", (e) => {
     e.preventDefault();
     if (connections.length > 0) dropZone.classList.add("drag-over");
@@ -581,6 +617,7 @@
 
   function sendFileParallel(file) {
     return new Promise((resolve) => {
+      showTransferUI("📤", file.name, file.size);
       addLog(`⏳ 4x வேகத்தில் அனுப்பப்படுகிறது: ${file.name} (${formatSize(file.size)})`);
 
       controlConn.dataChannel.send(JSON.stringify({
@@ -639,7 +676,7 @@
 
               dc.send(packet);
               sentBytes += chunkData.byteLength;
-              updateProgress(file.name, sentBytes, file.size, startTime);
+              updateProgress("📤", file.name, sentBytes, file.size, startTime);
 
               if (sentBytes >= file.size) {
                 const checkDrain = () => {
@@ -650,7 +687,7 @@
                   const totalBuffered = connections.reduce((sum, c) => sum + (c.dataChannel ? c.dataChannel.bufferedAmount : 0), 0);
                   if (totalBuffered === 0) {
                     controlConn.dataChannel.send(JSON.stringify({ type: "end" }));
-                    updateProgress(file.name, file.size, file.size, startTime, true);
+                    updateProgress("📤", file.name, file.size, file.size, startTime, true);
                     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
                     addLog(`📤 அனுப்பப்பட்டது: ${file.name} (${elapsed} வினாடிகளில்)`);
                     resolve();
