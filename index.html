@@ -3,69 +3,127 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fast Chunked Wi-Fi File Share (1GB+)</title>
+  <title>Hyper Share Pro — 4x Lanes & QR</title>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-    body { margin: 0; padding: 20px; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-    .card { background: #1e293b; width: 100%; max-width: 460px; padding: 28px; border-radius: 16px; box-shadow: 0 15px 35px rgba(0,0,0,0.4); text-align: center; border: 1px solid #334155; }
-    h2 { margin: 0 0 6px; color: #38bdf8; font-size: 22px; }
-    p.sub { margin: 0 0 20px; color: #94a3b8; font-size: 13px; }
-    .box { background: #0f172a; border: 2px dashed #334155; border-radius: 12px; padding: 16px; margin-bottom: 18px; }
-    .code-label { font-size: 13px; color: #94a3b8; margin-bottom: 6px; font-weight: 600; }
-    .my-code { font-size: 38px; font-weight: 800; letter-spacing: 6px; color: #38bdf8; margin: 4px 0; }
-    .connect-row { display: flex; gap: 10px; margin-bottom: 16px; }
-    input[type="text"] { flex: 1; padding: 12px; font-size: 18px; text-align: center; letter-spacing: 3px; border: 2px solid #334155; background: #0f172a; color: #fff; border-radius: 10px; outline: none; font-weight: bold; }
+    body { margin: 0; padding: 16px; background: #070b14; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    .card { background: #111827; width: 100%; max-width: 500px; padding: 24px; border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); text-align: center; border: 1px solid #1f2937; position: relative; transition: border-color 0.2s; }
+    .card.drag-over { border: 2px dashed #38bdf8; background: #0f172a; }
+    h2 { margin: 0 0 4px; color: #38bdf8; font-size: 22px; }
+    p.sub { margin: 0 0 14px; color: #94a3b8; font-size: 12px; }
+    
+    .top-badges { display: flex; justify-content: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .badge { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: #1e293b; color: #94a3b8; font-weight: 600; }
+    .badge.active { background: #064e3b; color: #6ee7b7; }
+
+    .box { background: #070b14; border: 2px dashed #1f2937; border-radius: 12px; padding: 14px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-around; gap: 12px; flex-wrap: wrap; }
+    .code-area { text-align: center; }
+    .code-label { font-size: 12px; color: #94a3b8; margin-bottom: 4px; font-weight: 600; }
+    .my-code { font-size: 36px; font-weight: 800; letter-spacing: 5px; color: #38bdf8; margin: 2px 0; }
+    #qrcode { background: #ffffff; padding: 8px; border-radius: 8px; display: inline-block; }
+    #qrcode img { display: block; }
+
+    .connect-row { display: flex; gap: 10px; margin-bottom: 14px; }
+    input[type="text"] { flex: 1; padding: 12px; font-size: 18px; text-align: center; letter-spacing: 3px; border: 2px solid #1f2937; background: #070b14; color: #fff; border-radius: 10px; outline: none; font-weight: bold; }
     input[type="text"]:focus { border-color: #38bdf8; }
-    button { background: #0284c7; color: white; border: none; padding: 12px 20px; font-size: 16px; font-weight: 600; border-radius: 10px; cursor: pointer; transition: 0.2s; }
+    button { background: #0284c7; color: white; border: none; padding: 12px 18px; font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer; transition: 0.2s; }
     button:hover { background: #0369a1; }
-    .status { font-size: 13px; font-weight: 600; padding: 10px; border-radius: 8px; margin-bottom: 18px; }
+    
+    .status { font-size: 13px; font-weight: 600; padding: 10px; border-radius: 8px; margin-bottom: 16px; }
     .status.wait { background: #451a03; color: #fcd34d; border: 1px solid #78350f; }
     .status.ok { background: #064e3b; color: #6ee7b7; border: 1px solid #065f46; }
     .status.err { background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
-    .file-area { display: none; border-top: 1px solid #334155; padding-top: 18px; }
-    .file-btn { display: block; width: 100%; background: #10b981; color: #064e3b; padding: 14px; border-radius: 10px; font-size: 16px; font-weight: 800; cursor: pointer; margin-bottom: 14px; transition: 0.2s; }
-    .file-btn:hover { background: #34d399; }
-    #fileInput { display: none; }
-    
-    .progress-wrap { display: none; background: #0f172a; padding: 12px; border-radius: 10px; margin-bottom: 14px; text-align: left; border: 1px solid #334155; }
-    .progress-info { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; color: #cbd5e1; font-weight: 600; }
-    .progress-bar-bg { width: 100%; height: 10px; background: #334155; border-radius: 6px; overflow: hidden; }
-    .progress-bar-fill { height: 100%; width: 0%; background: #38bdf8; transition: width 0.1s linear; }
 
-    .log { text-align: left; font-size: 12px; color: #cbd5e1; max-height: 150px; overflow-y: auto; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; }
-    .log div { margin-bottom: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 4px; word-break: break-all; }
+    .share-area { display: none; border-top: 1px solid #1f2937; padding-top: 16px; text-align: left; }
+    .disk-toggle { display: flex; justify-content: space-between; align-items: center; background: #070b14; padding: 10px 12px; border-radius: 10px; border: 1px solid #1f2937; margin-bottom: 12px; font-size: 12px; }
+    .disk-toggle label { display: flex; align-items: center; gap: 8px; cursor: pointer; color: #e2e8f0; font-weight: 600; }
+
+    .file-btn { display: block; width: 100%; background: linear-gradient(135deg, #10b981, #059669); color: #022c22; padding: 14px; border-radius: 10px; font-size: 16px; font-weight: 800; cursor: pointer; margin-bottom: 6px; text-align: center; transition: 0.2s; }
+    .file-btn:hover { filter: brightness(1.1); }
+    .hint-text { font-size: 11px; color: #94a3b8; text-align: center; margin-bottom: 14px; }
+    #fileInput { display: none; }
+
+    .text-box-wrap { background: #070b14; padding: 12px; border-radius: 10px; border: 1px solid #1f2937; margin-bottom: 14px; }
+    .text-row { display: flex; gap: 8px; }
+    textarea { flex: 1; height: 46px; resize: none; background: #111827; border: 1px solid #374151; color: #f8fafc; border-radius: 8px; padding: 10px; font-size: 13px; outline: none; }
+    textarea:focus { border-color: #38bdf8; }
+    .send-txt-btn { background: #6366f1; padding: 0 16px; font-size: 14px; }
+    .send-txt-btn:hover { background: #4f46e5; }
+
+    .progress-wrap { display: none; background: #070b14; padding: 12px; border-radius: 10px; margin-bottom: 14px; border: 1px solid #1f2937; }
+    .progress-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .progress-info { flex: 1; display: flex; justify-content: space-between; font-size: 12px; color: #cbd5e1; font-weight: 600; }
+    .cancel-btn { background: #dc2626; color: white; padding: 4px 10px; font-size: 11px; border-radius: 6px; font-weight: 700; }
+    .cancel-btn:hover { background: #b91c1c; }
+    .progress-bar-bg { width: 100%; height: 10px; background: #1f2937; border-radius: 6px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #0284c7, #38bdf8); transition: width 0.1s linear; }
+
+    .log { font-size: 12px; color: #cbd5e1; max-height: 180px; overflow-y: auto; background: #070b14; padding: 10px; border-radius: 8px; border: 1px solid #1f2937; }
+    .log-item { margin-bottom: 8px; border-bottom: 1px solid #1f2937; padding-bottom: 6px; word-break: break-word; }
+    .received-text-card { background: #1f2937; padding: 8px 10px; border-radius: 6px; margin-top: 4px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .received-text-content { color: #e2e8f0; font-size: 13px; white-space: pre-wrap; word-break: break-all; flex: 1; }
+    .copy-btn { background: #374151; color: #38bdf8; border: 1px solid #4b5563; padding: 5px 10px; font-size: 11px; border-radius: 6px; cursor: pointer; flex-shrink: 0; }
   </style>
 </head>
 <body>
 
-<div class="card">
-  <h2>🚀 Turbo LAN File Share</h2>
-  <p class="sub">1GB+ பெரிய வீடியோக்களையும் ஹேங் ஆகாமல் பகிரலாம்</p>
+<div class="card" id="dropZone">
+  <h2>🚀 Hyper Share Pro</h2>
+  <p class="sub">4x Parallel Lanes • QR Auto-Connect • Wake Lock • Paste Share</p>
+
+  <div class="top-badges">
+    <span class="badge" id="wakeBadge">🔆 Screen Wake: Off</span>
+    <span class="badge" id="diskBadge">💾 Disk API: Checking</span>
+  </div>
 
   <div id="status" class="status wait">இணைப்பிற்குத் தயாராகிறது...</div>
 
-  <div class="box">
-    <div class="code-label">உங்கள் 4-இலக்க எண் (Your Code):</div>
-    <div id="myCode" class="my-code">----</div>
+  <div class="box" id="codeBox">
+    <div class="code-area">
+      <div class="code-label">உங்கள் 4-இலக்க எண்:</div>
+      <div id="myCode" class="my-code">----</div>
+      <div style="font-size: 11px; color: #64748b;">QR ஸ்கேன் செய்தால் தானாக இணையும்</div>
+    </div>
+    <div id="qrcode"></div>
   </div>
 
   <div id="connectSection">
-    <div class="code-label">மற்றொரு சாதனத்தின் எண்ணை உள்ளிடவும்:</div>
+    <div class="code-label" style="margin-bottom: 6px;">அல்லது மற்றொரு சாதனத்தின் எண்ணை உள்ளிடவும்:</div>
     <div class="connect-row">
       <input type="text" id="peerCodeInput" maxlength="4" placeholder="1234" inputmode="numeric">
       <button id="connectBtn" onclick="connectToPeer()">Connect</button>
     </div>
   </div>
 
-  <div id="fileSection" class="file-area">
-    <label for="fileInput" class="file-btn" id="sendLabel">📁 கோப்புகளைத் தேர்ந்தெடுக்கவும் (1GB+ ஆதரவு)</label>
-    <input type="file" id="fileInput" multiple onchange="queueFiles()">
+  <div id="shareSection" class="share-area">
+    <div class="disk-toggle">
+      <label>
+        <input type="checkbox" id="directDiskCheck">
+        <span>💾 Direct Disk Save (RAM நிரம்பாமல் சேமிக்க)</span>
+      </label>
+    </div>
+
+    <label for="fileInput" class="file-btn">⚡ கோப்புகளைத் தேர்ந்தெடுக்கவும் (4x Speed)</label>
+    <div class="hint-text">💡 கோப்புகளை இழுத்துப் போடலாம் (Drag & Drop) அல்லது Screenshot-ஐ <b>Ctrl+V</b> செய்து அனுப்பலாம்</div>
+    <input type="file" id="fileInput" multiple onchange="queueFiles(this.files)">
+
+    <div class="text-box-wrap">
+      <div class="code-label" style="margin-bottom: 6px;">💬 டெக்ஸ்ட் / லிங்க் அனுப்புக:</div>
+      <div class="text-row">
+        <textarea id="textInput" placeholder="இங்கே லிங்க் அல்லது செய்தியை டைப் செய்யவும்..."></textarea>
+        <button class="send-txt-btn" onclick="sendText()">Send</button>
+      </div>
+    </div>
 
     <div class="progress-wrap" id="progressWrap">
-      <div class="progress-info">
-        <span id="progressFileName">கோப்பு அனுப்பப்படுகிறது...</span>
-        <span id="progressPercent">0% (0 MB/s)</span>
+      <div class="progress-top">
+        <div class="progress-info">
+          <span id="progressFileName">அனுப்பப்படுகிறது...</span>
+          <span id="progressPercent">0% (0 MB/s)</span>
+        </div>
+        <button class="cancel-btn" id="cancelBtn" onclick="cancelCurrentTransfer()">✕ Cancel</button>
       </div>
       <div class="progress-bar-bg">
         <div class="progress-bar-fill" id="progressFill"></div>
@@ -77,31 +135,92 @@
 </div>
 
 <script>
-  const PREFIX = "siva-turbo-share-";
-  const CHUNK_SIZE = 64 * 1024; // 64KB per chunk
-  const MAX_BUFFER = 4 * 1024 * 1024; // 4MB buffer limit to prevent browser crash
+  const PREFIX = "siva-hyperpro-v3-";
+  const NUM_CHANNELS = 4;
+  const CHUNK_SIZE = 256 * 1024; // 256KB
+  const BUFFER_THRESHOLD = 4 * 1024 * 1024; // 4MB per lane
   const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
 
   let peer = null;
-  let conn = null;
+  let connections = [];
+  let controlConn = null;
   let fileQueue = [];
   let isSending = false;
+  let cancelTransferFlag = false;
+  let wakeLockSentinel = null;
 
   // Receiver state
   let incomingMeta = null;
-  let receivedChunks = [];
+  let receivedChunksMap = new Map();
   let receivedBytes = 0;
   let receiveStartTime = 0;
+  let lastUiUpdate = 0;
+  let diskWritableStream = null;
+  let nextWriteOffset = 0;
 
   const statusEl = document.getElementById("status");
   const myCodeEl = document.getElementById("myCode");
-  const fileSection = document.getElementById("fileSection");
+  const codeBox = document.getElementById("codeBox");
+  const shareSection = document.getElementById("shareSection");
   const connectSection = document.getElementById("connectSection");
   const logBox = document.getElementById("logBox");
   const progressWrap = document.getElementById("progressWrap");
   const progressFileName = document.getElementById("progressFileName");
   const progressPercent = document.getElementById("progressPercent");
   const progressFill = document.getElementById("progressFill");
+  const directDiskCheck = document.getElementById("directDiskCheck");
+  const diskBadge = document.getElementById("diskBadge");
+  const wakeBadge = document.getElementById("wakeBadge");
+  const dropZone = document.getElementById("dropZone");
+
+  // 1. Check Direct Disk API Support
+  const supportsDiskAPI = typeof window.showSaveFilePicker === "function";
+  if (supportsDiskAPI) {
+    diskBadge.textContent = "💾 Disk API: Ready";
+    diskBadge.classList.add("active");
+  } else {
+    diskBadge.textContent = "📱 Mobile Auto-Save";
+    directDiskCheck.disabled = true;
+  }
+
+  // 2. Screen Wake Lock API (Keeps screen awake during connection)
+  async function requestWakeLock() {
+    if ("wakeLock" in navigator) {
+      try {
+        wakeLockSentinel = await navigator.wakeLock.request("screen");
+        wakeBadge.textContent = "🔆 Screen Wake: ON";
+        wakeBadge.classList.add("active");
+        wakeLockSentinel.addEventListener("release", () => {
+          wakeBadge.textContent = "🔆 Screen Wake: Off";
+          wakeBadge.classList.remove("active");
+        });
+      } catch (err) {
+        console.log("WakeLock skipped:", err);
+      }
+    }
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (wakeLockSentinel !== null && document.visibilityState === "visible") {
+      requestWakeLock();
+    }
+  });
+
+  // 3. Generate QR Code for Auto-Connect
+  function renderQRCode(code) {
+    const qrContainer = document.getElementById("qrcode");
+    qrContainer.innerHTML = "";
+    const baseUrl = window.location.href.split("?")[0];
+    const autoConnectUrl = `${baseUrl}?code=${code}`;
+    new QRCode(qrContainer, {
+      text: autoConnectUrl,
+      width: 110,
+      height: 110,
+      colorDark: "#070b14",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  }
 
   function formatSize(bytes) {
     if (bytes === 0) return "0 B";
@@ -113,17 +232,53 @@
 
   function addLog(msg) {
     const div = document.createElement("div");
+    div.className = "log-item";
     div.textContent = msg;
     logBox.prepend(div);
   }
 
-  function updateProgress(name, current, total, startTime) {
+  function addReceivedTextLog(text) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "log-item";
+    const header = document.createElement("div");
+    header.textContent = "💬 புதிய செய்தி / லிங்க்:";
+    header.style.color = "#38bdf8";
+    header.style.fontWeight = "600";
+
+    const card = document.createElement("div");
+    card.className = "received-text-card";
+    const content = document.createElement("div");
+    content.className = "received-text-content";
+    content.textContent = text;
+
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "copy-btn";
+    copyBtn.textContent = "Copy";
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(text).then(() => {
+        copyBtn.textContent = "Copied!";
+        setTimeout(() => copyBtn.textContent = "Copy", 2000);
+      });
+    };
+
+    card.appendChild(content);
+    card.appendChild(copyBtn);
+    wrapper.appendChild(header);
+    wrapper.appendChild(card);
+    logBox.prepend(wrapper);
+  }
+
+  function updateProgress(name, current, total, startTime, force = false) {
+    const now = Date.now();
+    if (!force && now - lastUiUpdate < 120) return;
+    lastUiUpdate = now;
+
     progressWrap.style.display = "block";
     const pct = Math.min(100, Math.round((current / total) * 100));
-    const elapsed = (Date.now() - startTime) / 1000;
+    const elapsed = (now - startTime) / 1000;
     const speed = elapsed > 0 ? (current / (1024 * 1024) / elapsed).toFixed(1) : "0.0";
     
-    progressFileName.textContent = name.length > 22 ? name.substring(0, 20) + "..." : name;
+    progressFileName.textContent = name.length > 18 ? name.substring(0, 16) + "..." : name;
     progressPercent.textContent = `${pct}% (${speed} MB/s)`;
     progressFill.style.width = pct + "%";
 
@@ -135,18 +290,34 @@
     }
   }
 
+  function hideProgress() {
+    progressWrap.style.display = "none";
+    progressFill.style.width = "0%";
+  }
+
+  // 4. Initialize Peer & Check URL ?code=XXXX for Auto-Connect
   function initPeer() {
     peer = new Peer(PREFIX + randomCode);
 
     peer.on("open", () => {
       myCodeEl.textContent = randomCode;
+      renderQRCode(randomCode);
       statusEl.className = "status wait";
-      statusEl.textContent = "தயார்! மற்றொரு சாதனத்தில் இந்த எண்ணை உள்ளிடவும்.";
+      statusEl.textContent = "தயார்! QR ஸ்கேன் செய்யவும் அல்லது எண்ணை உள்ளிடவும்.";
+
+      // Auto-connect if opened via QR scan (?code=1234)
+      const urlParams = new URLSearchParams(window.location.search);
+      const autoCode = urlParams.get("code");
+      if (autoCode && autoCode.length === 4 && autoCode !== randomCode) {
+        document.getElementById("peerCodeInput").value = autoCode;
+        // Clean URL without reloading
+        window.history.replaceState({}, document.title, window.location.pathname);
+        connectToPeer(autoCode);
+      }
     });
 
-    peer.on("connection", (connection) => {
-      conn = connection;
-      setupConnection();
+    peer.on("connection", (conn) => {
+      registerChannel(conn);
     });
 
     peer.on("error", (err) => {
@@ -156,150 +327,348 @@
     });
   }
 
-  function connectToPeer() {
-    const targetCode = document.getElementById("peerCodeInput").value.trim();
+  function connectToPeer(overrideCode = null) {
+    const targetCode = overrideCode || document.getElementById("peerCodeInput").value.trim();
     if (targetCode.length !== 4) {
       alert("சரியான 4 இலக்க எண்ணை உள்ளிடவும்!");
       return;
     }
     statusEl.className = "status wait";
-    statusEl.textContent = "இணைக்கப்படுகிறது...";
-    conn = peer.connect(PREFIX + targetCode, { reliable: true });
-    setupConnection();
+    statusEl.textContent = `4 இணை வழிகள் மூலம் (${targetCode}) இணைக்கப்படுகிறது...`;
+
+    connections = [];
+    for (let i = 0; i < NUM_CHANNELS; i++) {
+      const conn = peer.connect(PREFIX + targetCode, {
+        reliable: true,
+        serialization: "raw",
+        metadata: { lane: i }
+      });
+      registerChannel(conn);
+    }
   }
 
-  function setupConnection() {
+  function registerChannel(conn) {
     conn.on("open", () => {
-      statusEl.className = "status ok";
-      statusEl.textContent = "✅ இணைக்கப்பட்டது! (Chunking Mode Active)";
-      connectSection.style.display = "none";
-      fileSection.style.display = "block";
-      addLog("சாதனம் இணைக்கப்பட்டது. பெரிய கோப்புகளையும் அனுப்பலாம்.");
+      if (!connections.includes(conn)) connections.push(conn);
+      if (!controlConn) controlConn = conn;
+
+      if (connections.length >= NUM_CHANNELS) {
+        statusEl.className = "status ok";
+        statusEl.textContent = "✅ 4 Parallel Channels இணைக்கப்பட்டன! (Pro Mode)";
+        connectSection.style.display = "none";
+        codeBox.style.display = "none";
+        shareSection.style.display = "block";
+        requestWakeLock();
+        addLog("இணைப்பு தயார். கோப்புகள், Screenshot (Ctrl+V) மற்றும் லிங்க்குகளைப் பகிரலாம்.");
+      }
     });
 
-    conn.on("data", (data) => {
-      // 1. File Metadata received
-      if (data && data.type === "meta") {
-        incomingMeta = data;
-        receivedChunks = [];
-        receivedBytes = 0;
-        receiveStartTime = Date.now();
-        addLog(`📥 பெறப்படுகிறது: ${data.name} (${formatSize(data.size)})`);
-        return;
+    conn.on("data", async (data) => {
+      if (data instanceof Blob) data = await data.arrayBuffer();
+
+      if (typeof data === "string") {
+        try {
+          const msg = JSON.parse(data);
+          if (msg.type === "text") {
+            addReceivedTextLog(msg.content);
+            return;
+          }
+          if (msg.type === "cancel") {
+            await handleRemoteCancel();
+            return;
+          }
+          if (msg.type === "meta") {
+            incomingMeta = msg;
+            receivedChunksMap.clear();
+            receivedBytes = 0;
+            nextWriteOffset = 0;
+            diskWritableStream = null;
+            receiveStartTime = Date.now();
+            addLog(`📥 பெறப்படுகிறது: ${msg.name} (${formatSize(msg.size)})`);
+
+            if (supportsDiskAPI && directDiskCheck.checked) {
+              try {
+                const handle = await window.showSaveFilePicker({ suggestedName: msg.name });
+                diskWritableStream = await handle.createWritable();
+                addLog("💾 நேரடி Disk எழுத்து முறை செயலில் உள்ளது.");
+              } catch (err) {
+                addLog("⚠️ Disk Save ரத்து செய்யப்பட்டது; RAM முறைக்கு மாறுகிறது.");
+                diskWritableStream = null;
+              }
+            }
+            return;
+          }
+          if (msg.type === "end" && incomingMeta) {
+            await finalizeReceivedFile();
+            return;
+          }
+        } catch (e) {
+          console.error("Control parse error", e);
+        }
       }
 
-      // 2. End of file signal received
-      if (data && data.type === "end" && incomingMeta) {
-        const blob = new Blob(receivedChunks, { type: incomingMeta.fileType || "application/octet-stream" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = incomingMeta.name;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      if (incomingMeta && (data instanceof ArrayBuffer || ArrayBuffer.isView(data))) {
+        const buffer = data instanceof ArrayBuffer ? data : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+        const view = new DataView(buffer);
+        const offset = view.getFloat64(0, true);
+        const chunkPayload = buffer.slice(8);
 
-        addLog(`✅ சேமிக்கப்பட்டது: ${incomingMeta.name}`);
-        incomingMeta = null;
-        receivedChunks = [];
-        receivedBytes = 0;
-        return;
-      }
-
-      // 3. Binary chunk received
-      if (incomingMeta && (data instanceof ArrayBuffer || data instanceof Uint8Array || data.byteLength !== undefined)) {
-        receivedChunks.push(data);
-        receivedBytes += data.byteLength;
+        receivedChunksMap.set(offset, chunkPayload);
+        receivedBytes += chunkPayload.byteLength;
         updateProgress(incomingMeta.name, receivedBytes, incomingMeta.size, receiveStartTime);
+
+        if (diskWritableStream) {
+          await flushSequentialChunksToDisk();
+        }
       }
     });
 
     conn.on("close", () => {
       statusEl.className = "status err";
       statusEl.textContent = "❌ இணைப்பு துண்டிக்கப்பட்டது. Refresh செய்யவும்.";
-      fileSection.style.display = "none";
+      shareSection.style.display = "none";
       connectSection.style.display = "block";
+      codeBox.style.display = "flex";
+      connections = [];
+      controlConn = null;
     });
   }
 
-  function queueFiles() {
-    const input = document.getElementById("fileInput");
-    if (!input.files.length) return;
-    for (let i = 0; i < input.files.length; i++) {
-      fileQueue.push(input.files[i]);
+  // 5. Cancel Transfer Handler (Sender & Receiver)
+  function cancelCurrentTransfer() {
+    if (isSending) {
+      cancelTransferFlag = true;
+      fileQueue = [];
+      if (controlConn && controlConn.open) {
+        controlConn.dataChannel.send(JSON.stringify({ type: "cancel" }));
+      }
+      hideProgress();
+      addLog("🛑 கோப்பு அனுப்புவது ரத்து செய்யப்பட்டது.");
+    } else if (incomingMeta) {
+      if (controlConn && controlConn.open) {
+        controlConn.dataChannel.send(JSON.stringify({ type: "cancel" }));
+      }
+      handleRemoteCancel();
     }
+  }
+
+  async function handleRemoteCancel() {
+    cancelTransferFlag = true;
+    fileQueue = [];
+    if (diskWritableStream) {
+      try { await diskWritableStream.abort(); } catch (e) {}
+      diskWritableStream = null;
+    }
+    incomingMeta = null;
+    receivedChunksMap.clear();
+    receivedBytes = 0;
+    hideProgress();
+    addLog("🛑 கோப்புப் பரிமாற்றம் நிறுத்தப்பட்டது.");
+  }
+
+  async function flushSequentialChunksToDisk() {
+    while (receivedChunksMap.has(nextWriteOffset)) {
+      const chunk = receivedChunksMap.get(nextWriteOffset);
+      receivedChunksMap.delete(nextWriteOffset);
+      await diskWritableStream.write(chunk);
+      nextWriteOffset += chunk.byteLength;
+    }
+  }
+
+  async function finalizeReceivedFile() {
+    if (!incomingMeta) return;
+    updateProgress(incomingMeta.name, incomingMeta.size, incomingMeta.size, receiveStartTime, true);
+    const elapsed = ((Date.now() - receiveStartTime) / 1000).toFixed(1);
+
+    if (diskWritableStream) {
+      await flushSequentialChunksToDisk();
+      await diskWritableStream.close();
+      diskWritableStream = null;
+      addLog(`✅ நேரடியாக Disk-ல் சேமிக்கப்பட்டது: ${incomingMeta.name} (${elapsed} வினாடிகளில்)`);
+    } else {
+      const sortedOffsets = Array.from(receivedChunksMap.keys()).sort((a, b) => a - b);
+      const orderedBlobs = sortedOffsets.map(off => receivedChunksMap.get(off));
+      const blob = new Blob(orderedBlobs, { type: incomingMeta.fileType || "application/octet-stream" });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = incomingMeta.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      addLog(`✅ சேமிக்கப்பட்டது: ${incomingMeta.name} (${elapsed} வினாடிகளில்)`);
+    }
+
+    incomingMeta = null;
+    receivedChunksMap.clear();
+    receivedBytes = 0;
+  }
+
+  function sendText() {
+    const input = document.getElementById("textInput");
+    const text = input.value.trim();
+    if (!text || !controlConn || !controlConn.open) return;
+
+    controlConn.dataChannel.send(JSON.stringify({ type: "text", content: text }));
+    addLog(`📤 அனுப்பிய செய்தி: ${text}`);
     input.value = "";
+  }
+
+  function queueFiles(fileList) {
+    if (!fileList || !fileList.length) return;
+    for (let i = 0; i < fileList.length; i++) {
+      fileQueue.push(fileList[i]);
+    }
+    document.getElementById("fileInput").value = "";
     if (!isSending) {
       processQueue();
     }
   }
 
+  // 6. Ctrl+V Clipboard Image / Screenshot Paste Support
+  window.addEventListener("paste", (e) => {
+    if (connections.length === 0) return;
+    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    const pastedFiles = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === "file") {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const ext = blob.type.split("/")[1] || "png";
+          const namedFile = new File([blob], `Screenshot_${Date.now()}.${ext}`, { type: blob.type });
+          pastedFiles.push(namedFile);
+        }
+      }
+    }
+    if (pastedFiles.length > 0) {
+      addLog("📋 Clipboard படம் கண்டறியப்பட்டது! அனுப்பப்படுகிறது...");
+      queueFiles(pastedFiles);
+    }
+  });
+
+  // 7. Drag & Drop File Support
+  dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    if (connections.length > 0) dropZone.classList.add("drag-over");
+  });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("drag-over");
+    if (connections.length > 0 && e.dataTransfer.files.length > 0) {
+      queueFiles(e.dataTransfer.files);
+    }
+  });
+
   async function processQueue() {
-    if (fileQueue.length === 0 || !conn || !conn.open) {
+    if (fileQueue.length === 0 || connections.length === 0) {
       isSending = false;
       return;
     }
 
     isSending = true;
+    cancelTransferFlag = false;
     const file = fileQueue.shift();
-    await sendFileInChunks(file);
-    processQueue();
+    await sendFileParallel(file);
+    if (!cancelTransferFlag) {
+      processQueue();
+    } else {
+      isSending = false;
+    }
   }
 
-  function sendFileInChunks(file) {
+  function sendFileParallel(file) {
     return new Promise((resolve) => {
-      addLog(`⏳ அனுப்பப்படுகிறது: ${file.name} (${formatSize(file.size)})`);
-      
-      // Send metadata first
-      conn.send({
+      addLog(`⏳ 4x வேகத்தில் அனுப்பப்படுகிறது: ${file.name} (${formatSize(file.size)})`);
+
+      controlConn.dataChannel.send(JSON.stringify({
         type: "meta",
         name: file.name,
         size: file.size,
         fileType: file.type
-      });
+      }));
 
-      let offset = 0;
-      const startTime = Date.now();
-      const reader = new FileReader();
+      setTimeout(() => {
+        let offset = 0;
+        let sentBytes = 0;
+        let laneIndex = 0;
+        const startTime = Date.now();
+        let activeReaders = 0;
+        const MAX_CONCURRENT_READS = 4;
 
-      const readNextChunk = () => {
-        // Check WebRTC DataChannel buffer to avoid memory overflow
-        const dc = conn.dataChannel;
-        if (dc && dc.bufferedAmount > MAX_BUFFER) {
-          setTimeout(readNextChunk, 20);
-          return;
-        }
+        const pump = () => {
+          if (cancelTransferFlag) {
+            resolve();
+            return;
+          }
 
-        const slice = file.slice(offset, offset + CHUNK_SIZE);
-        reader.readAsArrayBuffer(slice);
-      };
+          while (activeReaders < MAX_CONCURRENT_READS && offset < file.size && !cancelTransferFlag) {
+            const targetConn = connections[laneIndex % connections.length];
+            laneIndex++;
 
-      reader.onload = (e) => {
-        if (!conn || !conn.open) {
-          resolve();
-          return;
-        }
+            if (!targetConn || !targetConn.open) {
+              resolve();
+              return;
+            }
 
-        conn.send(e.target.result);
-        offset += e.target.result.byteLength;
-        updateProgress(file.name, offset, file.size, startTime);
+            const dc = targetConn.dataChannel;
+            if (dc.bufferedAmount > BUFFER_THRESHOLD) {
+              setTimeout(pump, 10);
+              return;
+            }
 
-        if (offset < file.size) {
-          readNextChunk();
-        } else {
-          conn.send({ type: "end" });
-          addLog(`📤 அனுப்பி முடிக்கப்பட்டது: ${file.name}`);
-          resolve();
-        }
-      };
+            const currentOffset = offset;
+            const slice = file.slice(currentOffset, currentOffset + CHUNK_SIZE);
+            offset += slice.size;
+            activeReaders++;
 
-      reader.onerror = () => {
-        addLog(`❌ பிழை: ${file.name} படிப்பதில் சிக்கல்.`);
-        resolve();
-      };
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              activeReaders--;
+              if (cancelTransferFlag || !targetConn.open) {
+                resolve();
+                return;
+              }
 
-      readNextChunk();
+              const chunkData = e.target.result;
+              const packet = new ArrayBuffer(8 + chunkData.byteLength);
+              new DataView(packet).setFloat64(0, currentOffset, true);
+              new Uint8Array(packet, 8).set(new Uint8Array(chunkData));
+
+              dc.send(packet);
+              sentBytes += chunkData.byteLength;
+              updateProgress(file.name, sentBytes, file.size, startTime);
+
+              if (sentBytes >= file.size) {
+                const checkDrain = () => {
+                  if (cancelTransferFlag) {
+                    resolve();
+                    return;
+                  }
+                  const totalBuffered = connections.reduce((sum, c) => sum + (c.dataChannel ? c.dataChannel.bufferedAmount : 0), 0);
+                  if (totalBuffered === 0) {
+                    controlConn.dataChannel.send(JSON.stringify({ type: "end" }));
+                    updateProgress(file.name, file.size, file.size, startTime, true);
+                    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                    addLog(`📤 அனுப்பப்பட்டது: ${file.name} (${elapsed} வினாடிகளில்)`);
+                    resolve();
+                  } else {
+                    setTimeout(checkDrain, 20);
+                  }
+                };
+                checkDrain();
+              } else {
+                pump();
+              }
+            };
+            reader.readAsArrayBuffer(slice);
+          }
+        };
+
+        pump();
+      }, 300);
     });
   }
 
